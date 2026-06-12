@@ -1,0 +1,12 @@
+{
+  "name": "com.nuoyan.interactive",
+  "displayName": "NuoYan Interactive",
+  "version": "1.0.0",
+  "unity": "2022.3",
+  "description": "NuoYan Unity 交互系统框架。\n提供统一的交互入口、交互案例管理和输入适配能力。",
+  "license": "MIT",
+  "dependencies": {},
+  "author": {
+    "name": "NuoYan"
+  }
+}
