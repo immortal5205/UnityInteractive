@@ -8,16 +8,24 @@ namespace NuoYan.Interactive
         /// <summary>新输入系统是否有可用设备</summary>
         private static bool HasNewInput => Mouse.current != null || Touchscreen.current != null;
 
-        /// <summary>触摸屏设备存在且有活跃触摸</summary>
+        /// <summary>触摸屏设备存在且有活跃触摸（每帧只计算一次，缓存结果）</summary>
+        private static int s_HasTouchFrame = -1;
+        private static bool s_HasTouchCache;
         private static bool HasActiveTouch()
         {
-            if (Touchscreen.current == null) return false;
+            if (s_HasTouchFrame == Time.frameCount) return s_HasTouchCache;
+            s_HasTouchFrame = Time.frameCount;
+            if (Touchscreen.current == null) { s_HasTouchCache = false; return false; }
             foreach (var touch in Touchscreen.current.touches)
             {
                 var phase = touch.phase.ReadValue();
                 if (phase != UnityEngine.InputSystem.TouchPhase.None)
+                {
+                    s_HasTouchCache = true;
                     return true;
+                }
             }
+            s_HasTouchCache = false;
             return false;
         }
 

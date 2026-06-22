@@ -13,83 +13,103 @@ namespace NuoYan.Interactive
         public Type InteractSubject;
         public Type InteractTarget;
         public bool EnableExecuteOnLoad;
+        /// <summary>初始匹配优先级，越小越先；同优先级按发现顺序。LRU 命中后仍会前移。</summary>
+        public int Order;
 
-        public InteractCaseAttribute(Type subject, Type target, bool enableExecuteOnLoad = true)
+        public InteractCaseAttribute(Type subject, Type target, bool enableExecuteOnLoad = true, int order = 0)
         {
             InteractSubject = subject;
             InteractTarget = target;
             this.EnableExecuteOnLoad = enableExecuteOnLoad;
+            Order = order;
         }
     }
-
     /// <summary>
-    /// 拖拽物体聚焦目标交互情景
+    /// 交互情景,同时处理拖拽又可长按
     /// </summary>
-    public abstract class DragSubjectFocusTargetInteractCase : IInteractCase
+    public abstract class AbstractInteractCase : IInteractCase
     {
         public Type Subject { get; set; }
         public Type Target { get; set; }
         public bool Enable { get; set; }
-
+        public int Order { get; set; }
         private bool m_IsEnter = false;
         private bool m_IsExit = true;
         private int m_LastSubjectInstanceId = 0;
         private int m_LastTargetInstanceId = 0;
-
-        public DragSubjectFocusTargetInteractCase(Type subject, Type target)
+        public AbstractInteractCase(Type subject, Type target)
         {
             Subject = subject;
             Target = target;
         }
 
-        protected abstract void OnExecute(IDraggable subject, IFocusable target);
-
-        public bool Execute(IFocusable focusable, IDraggable dragable)
+        public virtual bool Execute(InteractContext context)
         {
-            if (focusable == null || dragable == null
-                || !Target.IsAssignableFrom(focusable.InteractableType)
-                || !Subject.IsAssignableFrom(dragable.InteractableType))
+            if (context.Focusable == null)
             {
-                if (m_IsEnter)
-                {
-                    m_IsEnter = false;
-                    OnExit();
-                    m_IsExit = true;
-                    m_LastSubjectInstanceId = 0;
-                    m_LastTargetInstanceId = 0;
-                }
+                ExitIfNeeded();
                 return false;
             }
 
-            int currentSubjectId = (dragable as MonoBehaviour)?.GetInstanceID() ?? 0;
-            int currentTargetId = (focusable as MonoBehaviour)?.GetInstanceID() ?? 0;
+            // 匹配：Drag 路径与 LongPress 路径任一路径满足即进入
+            bool targetOk = Target.IsAssignableFrom(context.Focusable.InteractableType);
+            bool dragOk = targetOk && context.Draggable != null
+                && Subject.IsAssignableFrom(context.Draggable.InteractableType);
+            bool pressOk = targetOk && context.LongPressHandler != null
+                && Subject.IsAssignableFrom(context.LongPressHandler.InteractableType);
 
-            bool subjectChanged = currentSubjectId != m_LastSubjectInstanceId;
-            bool targetChanged = currentTargetId != m_LastTargetInstanceId;
-            bool anyObjectChanged = subjectChanged || targetChanged;
-
-            if (m_IsEnter && anyObjectChanged)
+            if (!dragOk && !pressOk)
             {
-                m_IsEnter = false;
-                OnExit();
-                m_IsExit = true;
+                ExitIfNeeded();
+                return false;
             }
+
+            int currentSubjectId = dragOk
+                ? (context.Draggable as MonoBehaviour)?.GetInstanceID() ?? 0
+                : (context.LongPressHandler as MonoBehaviour)?.GetInstanceID() ?? 0;
+            int currentTargetId = (context.Focusable as MonoBehaviour)?.GetInstanceID() ?? 0;
+
+            if (m_IsEnter && (currentSubjectId != m_LastSubjectInstanceId || currentTargetId != m_LastTargetInstanceId))
+                ExitIfNeeded();
 
             if (m_IsExit)
             {
                 m_IsExit = false;
-                OnEnter(dragable, focusable);
+                if (dragOk) OnDragEnter(context.Draggable, context.Focusable);
+                if (pressOk) OnLongPressEnter(context.LongPressHandler, context.Focusable);
                 m_IsEnter = true;
-
                 m_LastSubjectInstanceId = currentSubjectId;
                 m_LastTargetInstanceId = currentTargetId;
             }
 
-            OnExecute(dragable, focusable);
+            if (dragOk) OnDragExecute(context.Draggable, context.Focusable);
+            if (pressOk) OnLongPressExecute(context.LongPressHandler, context.Focusable);
             return true;
         }
 
-        protected virtual void OnEnter(IDraggable subject, IFocusable target)
+        private void ExitIfNeeded()
+        {
+            if (m_IsEnter)
+            {
+                m_IsEnter = false;
+                OnExit();
+                m_IsExit = true;
+                m_LastSubjectInstanceId = 0;
+                m_LastTargetInstanceId = 0;
+            }
+        }
+        protected virtual void OnDragExecute(IDraggable subject, IFocusable target)
+        {
+
+        }
+        protected virtual void OnLongPressExecute(ILongPressHandler subject, IFocusable target)
+        {
+
+        }
+        protected virtual void OnDragEnter(IDraggable subject, IFocusable target)
+        {
+        }
+        protected virtual void OnLongPressEnter(ILongPressHandler subject, IFocusable target)
         {
         }
 
@@ -97,6 +117,76 @@ namespace NuoYan.Interactive
         {
         }
 
-        protected virtual bool EndDrag => EasyInput.PointerUp();
+
+        protected virtual bool Stop => EasyInput.PointerUp();
+    }
+
+    /// <summary>
+    /// 拖拽主体 x 焦点目标的交互情景（向后兼容 AbstractInteractCase）。
+    /// 重写此类即仅处理 Drag 路径，OnExecute/OnEnter 会被桥接到 OnDragExecute/OnDragEnter。
+    /// </summary>
+    public abstract class DragSubjectFocusTargetInteractCase : AbstractInteractCase
+    {
+        public DragSubjectFocusTargetInteractCase(Type subject, Type target) : base(subject, target) { }
+
+        protected abstract void OnExecute(IDraggable subject, IFocusable target);
+        protected virtual void OnEnter(IDraggable subject, IFocusable target) { }
+
+        protected override void OnDragExecute(IDraggable subject, IFocusable target)
+            => OnExecute(subject, target);
+        protected override void OnDragEnter(IDraggable subject, IFocusable target)
+            => OnEnter(subject, target);
+    }
+    /// <summary>
+    /// 长按主体 x 焦点目标的交互情景（向后兼容 AbstractInteractCase）。
+    /// </summary> <summary>
+    public abstract class LongPressSubjectFocusTargetInteractCase : AbstractInteractCase
+    {
+        public LongPressSubjectFocusTargetInteractCase(Type subject, Type target) : base(subject, target) { }
+
+        protected abstract void OnExecute(ILongPressHandler subject, IFocusable target);
+        protected virtual void OnEnter(ILongPressHandler subject, IFocusable target) { }
+
+        protected override void OnLongPressExecute(ILongPressHandler subject, IFocusable target) => OnExecute(subject, target);
+        protected override void OnLongPressEnter(ILongPressHandler subject, IFocusable target) => OnEnter(subject, target);
+    }
+
+    /// <summary>
+    /// 泛型版本：免去 OnExecute / OnEnter 内的手动 as 类型转换。
+    /// Subject/Target 由泛型参数推断，构造时仍兼容 (Type,Type) 以便反射激活。
+    /// </summary>
+    public abstract class DragSubjectFocusTargetInteractCase<TSubject, TTarget> : DragSubjectFocusTargetInteractCase
+        where TSubject : class, IDraggable
+        where TTarget : class, IFocusable
+    {
+        protected DragSubjectFocusTargetInteractCase() : base(typeof(TSubject), typeof(TTarget)) { }
+        protected DragSubjectFocusTargetInteractCase(Type subject, Type target) : base(subject, target) { }
+
+        protected abstract void OnExecute(TSubject subject, TTarget target);
+        protected virtual void OnEnter(TSubject subject, TTarget target) { }
+
+        protected override void OnExecute(IDraggable subject, IFocusable target)
+            => OnExecute(subject as TSubject, target as TTarget);
+        protected override void OnEnter(IDraggable subject, IFocusable target)
+            => OnEnter(subject as TSubject, target as TTarget);
+    }
+    /// <summary>
+    /// 泛型版本：免去 OnExecute / OnEnter 内的手动 as 类型转换。
+    /// </summary>
+    /// <typeparam name="TSubject"></typeparam>
+    /// <typeparam name="TTarget"></typeparam>
+    public abstract class LongPressSubjectFocusTargetInteractCase<TSubject, TTarget> : LongPressSubjectFocusTargetInteractCase
+        where TSubject : class, ILongPressHandler
+        where TTarget : class, IFocusable
+    {
+        protected LongPressSubjectFocusTargetInteractCase() : base(typeof(TSubject), typeof(TTarget)) { }
+        protected LongPressSubjectFocusTargetInteractCase(Type subject, Type target) : base(subject, target) { }
+
+        protected abstract void OnExecute(TSubject subject, TTarget target);
+        protected virtual void OnEnter(TSubject subject, TTarget target) { }
+
+        protected override void OnExecute(ILongPressHandler subject, IFocusable target)
+            => OnExecute(subject as TSubject, target as TTarget);
+
     }
 }

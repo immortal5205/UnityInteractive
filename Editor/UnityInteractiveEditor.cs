@@ -10,6 +10,9 @@ namespace NuoYan.Interactive
         private UnityInteractive m_Interactive;
         private Vector2 m_ScrollPos;
 
+        private static readonly GUIContent k_ThresholdLabel =
+            new GUIContent("长按阈值(秒)", "超过该时长判定为长按，由 InteractiveComponent 读取");
+
         private void OnEnable()
         {
             m_Interactive = target as UnityInteractive;
@@ -34,11 +37,60 @@ namespace NuoYan.Interactive
             serializedObject.Update();
             EditorGUILayout.Space(10);
 
-            DrawRuntimeState();
+            DrawSettings();
             EditorGUILayout.Space(10);
+
+            if (Application.isPlaying)
+            {
+                DrawRuntimeState();
+                EditorGUILayout.Space(10);
+            }
+
             DrawInteractCaseList();
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        private void DrawSettings()
+        {
+            EditorGUILayout.LabelField("设置", EditorStyles.boldLabel);
+            EditorGUI.indentLevel++;
+
+            var thresholdProp = serializedObject.FindProperty(nameof(UnityInteractive.LongPressThresholdTime));
+            var intervalProp = serializedObject.FindProperty(nameof(UnityInteractive.LongPressInterval));
+            if (thresholdProp != null)
+            {
+                EditorGUILayout.PropertyField(thresholdProp, k_ThresholdLabel);
+            }
+            else
+            {
+                // 兜底：直接改实例（非 play mode 也会标记 dirty）
+                EditorGUI.BeginChangeCheck();
+                float newThreshold = EditorGUILayout.FloatField(k_ThresholdLabel, m_Interactive.LongPressThresholdTime);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    m_Interactive.LongPressThresholdTime = newThreshold;
+                    EditorUtility.SetDirty(target);
+                }
+            }
+
+            if (intervalProp != null)
+            {
+                EditorGUILayout.PropertyField(intervalProp, new GUIContent("长按间隔(秒)", "小于等于 0 表示每帧调用"));
+            }
+            else
+            {
+                // 兜底：直接改实例（非 play mode 也会标记 dirty）
+                EditorGUI.BeginChangeCheck();
+                float newInterval = EditorGUILayout.FloatField("长按间隔(秒)", m_Interactive.LongPressInterval);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    m_Interactive.LongPressInterval = newInterval;
+                    EditorUtility.SetDirty(target);
+                }
+            }
+
+            EditorGUI.indentLevel--;
         }
 
         private void DrawRuntimeState()
@@ -48,6 +100,7 @@ namespace NuoYan.Interactive
 
             DrawStateField("拖拽对象", m_Interactive.CurrentDraggable);
             DrawStateField("焦点对象", m_Interactive.CurrentFocusable);
+            DrawStateField("长按对象", m_Interactive.CurrentLongPress);
             DrawStateField("活跃交互", m_Interactive.CurrentInteractCase);
 
             EditorGUI.indentLevel--;
@@ -76,7 +129,6 @@ namespace NuoYan.Interactive
             {
                 var interactCase = kvp.Value;
                 bool isCurrent = interactCase == m_Interactive.CurrentInteractCase;
-
                 DrawInteractCase(interactCase, isCurrent);
             }
 
@@ -103,6 +155,10 @@ namespace NuoYan.Interactive
 
                     // 情景名
                     EditorGUILayout.LabelField(interactCase.GetType().Name, EditorStyles.boldLabel);
+
+                    // Order
+                    int order = interactCase.Order;
+                    EditorGUILayout.LabelField("Order:" + order, GUILayout.Width(70));
 
                     if (isCurrent) EditorGUILayout.LabelField("活跃中", GUILayout.Width(45));
                 }
