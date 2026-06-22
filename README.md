@@ -321,18 +321,6 @@ OnPointerUp
 
 ---
 
-## 与 NuoYan.Item 的关系
-
-`NuoYan.Item`（`Assets/GameMain/NuoYan/Item/`）在本插件之上构建了物品+槽位+触发器的库存交互：
-
-- `ItemTrigger` — 基于 EventSystem 的原生事件分发（`IPointerDown/Up/Click/Enter/Exit/Move` + `IBeginDrag/IDrag/IEndDrag` + `IBeginLongPress/ILongPress/IEndLongPress`），使用 `ItemEntry` 委托列表模式，**与本插件平行**，不继承 `InteractiveComponent`
-- `ItemBase` — 物品 UI 组件，内置 `ItemTrigger` 做事件派发，支持 `SetIsCanDrag()` / `SetIsCanPress()` 运行时切换
-- `Slot` — 槽位容器，管理子 `ItemBase` 的放入/移除
-
-两者命名空间不同（`NuoYan.Interactive` vs `NuoYan`），可独立使用。`ItemTrigger` 和 `InteractiveComponent` 提供了两套不同的交互事件分发范式：委托列表 vs 虚方法继承。
-
----
-
 ## 常见问题
 
 **Q: 长按不触发，一直是拖拽？**
