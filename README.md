@@ -338,9 +338,8 @@ A: 调用 `UnityInteractive.Instance.EnableInteractCase<T>()` / `DisableInteract
 **Q: 为什么 OnStopPress 中 `CurrentPlacedItemType` 可能为 null？**
 A: 长按过程中外部可能调用了 `RemoveItem()` 清空槽位。应在 `OnStopPress` 中做空检查。
 
-**Q: `ItemTrigger` 和 `InteractiveComponent` 该用哪个？**
-A: 如果需要继承统一基类、利用单例状态追踪和案例系统 → 用 `InteractiveComponent`。如果只需要简单的事件回调、不需要全局管理 → 用 `ItemTrigger`。项目中两者共存：库存系统用 `ItemTrigger`，MaterialSlot/卡牌拖拽等需要案例匹配的场景用 `InteractiveComponent`。
-
+**Q: `InteractiveComponent` 适用场景？**
+A: 如果需要继承统一基类、利用单例状态追踪和案例系统 → 用 `InteractiveComponent`。
 ---
 
 ## 依赖
